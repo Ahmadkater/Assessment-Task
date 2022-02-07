@@ -1,0 +1,116 @@
+
+create table customers (CustID int not null, LastName varchar (20), Firstname varchar (20), primary key (CustID));
+
+create table inventory (TapeID int not null, MovieID varchar(10),primary key (TapeID),foreign key (MovieID) references movies) ;
+
+create table movies(MovieID varchar(10) not null,MovieName varchar(40),primary key (MovieID)) ;
+
+create table movieSupplier (MovieID varchar(10) not null,SupplierID varchar(10) not null,Price float,primary key (MovieID, SupplierID),foreign key (MovieID) references movies,foreign key (SupplierID) references suppliers) ;
+
+create table orders (OrderID int not null,supplierID varchar(10),movieID varchar(10),copies int,primary key (orderID),foreign key (movieID) references movies,foreign key (supplierID) references suppliers) ;
+
+create table rentals (CustomerID int not null,TapeID int not null,CkoutDate date not null,Duration int,primary key (CustomerID, TapeID, CkoutDate),foreign key (CustomerID) references customers,foreign key (TapeID) references inventory) ;
+
+create table suppliers (SupplierID varchar(10) not null,SupplierName varchar(40),primary key (SupplierID)) ;
+
+
+/*1.	Which movies are supplied by "Joe's House of Video" or "Video Warehouse"? */
+
+SELECT Moviename from movies
+WHERE MovieID in ( SELECT m.movieid 
+                  from suppliers AS s
+                  INNER JOIN movieSupplier as m  on s.SupplierID = m.SupplierID
+                  where s.SupplierName In ( "Joe's House of Video","Video Warehouse")
+                 )
+order by Moviename
+
+
+ 
+/*2. Which movie was rented for the longest duration (by any customer)? */
+
+SELECT MovieName from Movies 
+WHERE MovieID in ( SELECT i.MovieID
+                  from inventory as i 
+                  INNER JOIN rentals as r on r.TapeID = i.TapeID
+                  where r.duration = (SELECT max(duration) from rentals)
+                  )
+
+
+/*3. Which suppliers supply all the movies in the inventory? (Hint: first get a list of the movie suppliers and all the movies in the inventory using the cross product. Then find out which of these tuples are invalid.) */
+
+SELECT Suppliername 
+from suppliers as s
+WHERE s.SupplierID not IN
+(
+    SELECT sid FROM
+    (
+        SELECT DISTINCT ms.SupplierID as sid , i.MovieID as mid
+        from movieSupplier as ms
+        cross JOIN (SELECT DISTINCT movieid FROM inventory) as i
+        EXCEPT
+        SELECT SupplierID, movieid
+        FROM movieSupplier
+    )
+)
+
+/*4. How many movies in the inventory does each movie supplier supply? That is, for each movie supplier, calculate the number of movies it supplies that also happen to be movies in the inventory.*/
+
+SELECT s.SupplierName , COUNT(m.MovieID)
+from movieSupplier as m
+INNER JOIN suppliers as s on s.SupplierID = m.SupplierID
+GROUP BY m.supplierid
+
+/*5. For which movies have more than 4 copies been ordered?*/
+
+SELECT moviename
+FROM movies
+where movies.MovieID in (SELECT DISTINCT movieid
+                         from orders
+                         WHERE copies > 4)
+
+/*6. Which customers rented "Fatal Attraction 1987" or rented a movie supplied by "VWS Video"?*/
+
+SELECT c.Firstname , c.Lastname
+from customers as c
+INNER JOIN rentals as r on c.CustID = r.CustomerID
+where r.TapeID in (SELECT i.TapeID
+                   FROM inventory as i
+                   INNER JOIN movies as m on i.MovieID = m.MovieID 
+                   WHERE m.MovieName = "Fatal Attraction 1987" or m.MovieName = "VWS Video"
+                   )
+
+/*7. For which movies are there more than 1 copy in our inventory? (Note that the TapeID in inventory is different for different copies of the same MovieID)*/
+
+SELECT movies.Moviename
+FROM movies
+where movies.MovieID IN (SELECT movieid FROM inventory
+                         GROUP by movieid
+                         HAVING COUNT(inventory.TapeID) > 1)
+
+/*8. Which customers rented movies for 5 days or more?*/
+
+SELECT customers.Firstname,customers.lastname
+FROM customers
+WHERE customers.CustID in (SELECT rentals.CustomerID
+                           FROM rentals
+                           WHERE rentals.Duration >= 5
+                          ) 
+
+/* 9. Which supplier has the cheapest price for the movie "Almost Angels 1962"?*/
+
+SELECT Suppliername
+FROM suppliers
+where Supplierid in 
+( SELECT supplierid 
+  from (SELECT ms.SupplierID,Min(ms.price)
+      FROM movieSupplier as ms
+      WHERE ms.MovieID in (SELECT m.MovieID
+                           FROM movies as m
+                           WHERE m.MovieName == "Almost Angels 1962")
+     )
+ )
+
+ /*10. Which movies aren't in the inventory?*/
+SELECT movies.MovieName
+FROM movies
+WHERE movies.MovieID not in (SELECT DISTINCT Movieid FROM inventory)
